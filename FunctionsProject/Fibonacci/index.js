@@ -1,6 +1,6 @@
-const bigInt = require("big-integer");
-const redis = require("redis");
-const bluebird = require("bluebird");
+var bigInt = require("big-integer");
+var redis = require("redis");
+var bluebird = require("bluebird");
 
 //Promisify all the functions
 bluebird.promisifyAll(redis);
@@ -13,53 +13,58 @@ const client = redis.createClient(
     }
 );
 
-async function fibonacciExist(nth){
-    let key = generateKey(nth);
-    await client.existsAsync(key) === 1;
-}
+//Deploy in Azure
+/* const client = redis.createClient(
+    6380,'redislab10.redis.cache.windows.net',
+    {
+        auth_pass: 'UzxfcayyQsPl7dkGlaQxoMN9WRZQAwnLCPfElaqDMqQ=',
+        tls:{
+            servername: 'redislab10.redis.cache.windows.ne'
+        }
+    }
+); */
 
-async function getFibonacci(nth){
-    let key = generateKey(nth);
-    await client.getAsync(key);
-}
 
-async function setFibonacci(nth, nthValue){
-    let key = generateKey(nth);
-    await client.setAsync(key, nthValue.toString());
+async function fibonacci(nth){
+    var ans = null;
+    if (nth < 0){
+        throw 'must be greater than 0'
+    }else if (nth === 0){
+        ans = bigInt.zero;
+    }else if(nth === 1 || nth === 2){
+        ans =  bigInt.one;
+    }else if(await fibonacciExist(generateKey(nth))){
+        return (await getFibonacci(generateKey(nth)));
+    }
+    else{
+        ans = (await fibonacci(nth-1)).add((await fibonacci(nth-2)));
+        await setFibonacci(generateKey(nth),ans.toString());
+    }
+    return ans;
 }
 
 function generateKey(nth){
     return `fibonacci:nth:${nth.toString()}`;
 }
 
-async function fibonacci(nth){
-    //console.log("Enesimo nth: "+nth);
-    let answer = bigInt.zero;
+async function fibonacciExist(key){
+    return (await client.existsAsync(key))=== 1;
+}
 
-    if (nth < 0){
-        throw "Must be greater than 0";
-    }else if (nth === 0){
-        answer = bigInt.zero;
-    }else if (nth === 1 | nth === 2){
-        answer = bigInt.one;;
-    }else if (await fibonacciExist(nth)){
-        answer = await getFibonacci(nth);
-    }else{
-        answer = (await fibonacci(nth-1)).add(await fibonacci(nth-2));;
-        await setFibonacci(nth, answer)
-    }
-    //console.log("answer"+answer.toString());
-    return answer;
+async function getFibonacci(key){
+    return bigInt(await client.getAsync(key));
+}
+
+async function setFibonacci(key,value){
+    await client.setAsync(key,value);
 }
 
 module.exports = async function (context, req) {
     context.log('JavaScript HTTP trigger function processed a request.');
-
-    let nth = req.body.nth;
-    let answer = await fibonacci(nth);
+    let nth = req.body.nth
+    answer = await fibonacci(nth);
 
     context.res = {
         body: answer.toString()
-    }
-
-};
+    };
+}
